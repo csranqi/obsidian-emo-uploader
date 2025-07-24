@@ -8,7 +8,7 @@ export interface GithubParms extends EmoParms {
   required: Required
   path: string
   random: boolean
-  prefixPath: boolean,
+  prefixPath: boolean
   cdn: CDNprovider
 }
 
