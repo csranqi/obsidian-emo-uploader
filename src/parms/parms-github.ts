@@ -8,6 +8,7 @@ export interface GithubParms extends EmoParms {
   required: Required
   path: string
   random: boolean
+  prefixPath: boolean,
   cdn: CDNprovider
 }
 
@@ -28,5 +29,6 @@ export const GITHUB_DEFAULT_PARMS: GithubParms = {
   },
   path: '',
   random: true,
+  prefixPath: true,
   cdn: CDNprovider.raw
 }

@@ -5,7 +5,7 @@ import {
 } from 'obsidian'
 import { t } from './lang/helpers'
 import { EmoUploaderSettingTab } from './settings-tab'
-import type { Config } from './config'
+import { Config, WindowShared } from './config'
 import { DEFAULT_SETTINGS, HostingProvider } from './config'
 import type { EmoUploader } from './base/emo-uploader'
 import { GithubUploader } from './uploader/uploader-github'
@@ -28,11 +28,13 @@ export default class Emo extends Plugin {
     await this.loadSettings()
     this.setupPasteHandler()
     this.addSettingTab(new EmoUploaderSettingTab(this.app, this))
+    WindowShared.register(this.app)
   }
 
   // Plugin shutdown steps
   onunload (): void {
     console.log('unloading Emo uploader')
+    WindowShared.unregister()
   }
 
   // Load settings infromation

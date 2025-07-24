@@ -83,6 +83,17 @@ export class GithubFragment extends EmoFragment {
       })
 
     new Setting(el)
+      .setName('prefix path')
+      .setDesc('the createtime of activity file as the prefix path')
+      .addToggle((toggle) => {
+        toggle.setValue(parms.prefixPath)
+        toggle.onChange(async (value) => {
+          parms.prefixPath = value
+          await plugin.saveSettings()
+        })
+      })
+
+    new Setting(el)
       .setName(t('random filename'))
       .setDesc(t('random filename desc'))
       .addToggle((toggle) => {

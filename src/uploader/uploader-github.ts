@@ -4,6 +4,7 @@ import type { GithubParms } from '../parms/parms-github'
 import { CDNprovider } from '../parms/parms-github'
 import { getBase64, getRandomFileName } from '../utils/file-helper'
 import { EmoUploader } from '../base/emo-uploader'
+import { WindowShared } from '../config'
 
 export class GithubUploader extends EmoUploader {
   parms!: GithubParms
@@ -13,13 +14,21 @@ export class GithubUploader extends EmoUploader {
   }
 
   async upload (file: File): Promise<string> {
+    const currentApp = WindowShared.getApp()
+    const activeFile = currentApp.workspace.getActiveFile()
     let filePath = ''
+    // get activity file creatime
+    let pathPre = this.parms.path
+    if (this.parms.prefixPath && activeFile != null) {
+      const date = new Date(activeFile.stat.ctime)
+      pathPre = pathPre + date.toISOString() + '/'
+    }
     if (this.parms.random) { // use random filename
       const startSuffix = file.name.lastIndexOf('.')
-      filePath = this.parms.path + getRandomFileName()
+      filePath = pathPre + getRandomFileName()
       filePath += startSuffix > 0 ? file.name.substring(startSuffix) : '' // for no suffix files
     } else {
-      filePath = this.parms.path + file.name // original filename
+      filePath = pathPre + file.name // original filename
     }
     const jsonBody = {
       owner: this.parms.required.owner,

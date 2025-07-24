@@ -18,6 +18,7 @@ import type { AlistParms } from './parms/parms-alist'
 import { ALIST_DEFAULT_PARMS } from './parms/parms-alist'
 import type { EasyImageParms } from './parms/parms-easyimage'
 import { EASYIMAGE_DEFAULT_PARMS } from './parms/parms-easyimage'
+import { App } from 'obsidian'
 
 export interface Config { // data from data.json
   choice: HostingProvider
@@ -33,6 +34,24 @@ export interface Config { // data from data.json
   easyimage_parms: EasyImageParms
 }
 
+export const WindowShared = {
+  appMap: new WeakMap<Window, App>(),
+
+  register(app: App) {
+    this.appMap.set(window, app);
+  },
+
+  unregister () {
+    this.appMap.delete(window)
+  },
+
+  getApp(): App {
+    const app = this.appMap.get(window);
+    if (!app) throw new Error("App not register！");
+    return app;
+  }
+}
+
 export enum HostingProvider { // target hosting
   Github = 'Github',
   Cloudinary = 'Cloudinary',
@@ -45,6 +64,7 @@ export enum HostingProvider { // target hosting
   Alist = 'AList',
   EasgyImage = 'EasyImage'
 }
+
 
 export const DEFAULT_SETTINGS: Config = {
   choice: HostingProvider.Github,
