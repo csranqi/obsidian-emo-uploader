@@ -125,7 +125,8 @@ export default class Emo extends Plugin {
       id: 'emo-delete-image-at-cursor',
       name: t('delete image cmd'),
       editorCallback: (editor) => {
-        const line = editor.getLine(editor.getCursor().line)
+        const lineNo = editor.getCursor().line
+        const line = editor.getLine(lineNo)
         const ref = parseGithubImageUrl(line)
         const gp = this.config.github_parms
         if (ref == null || ref.owner !== gp.required.owner || ref.repo !== gp.required.repo) {
@@ -135,9 +136,23 @@ export default class Emo extends Plugin {
         new ConfirmModal(this.app, t('confirm delete title'), [ref.filePath], () => {
           const uploader = new GithubUploader(gp)
           uploader.deleteRemote(ref.filePath).then(() => {
-            // 同步删除正文该行链接
-            const cur = editor.getCursor().line
-            editor.replaceRange('', { line: cur, ch: 0 }, { line: cur + 1, ch: 0 })
+            // Remove only the matched image/link span on the captured line
+            const linkPattern = /!?\[[^\]]*\]\([^)]*\)/g
+            const currentLine = editor.getLine(lineNo)
+            let match: RegExpExecArray | null
+            let removed = false
+            while ((match = linkPattern.exec(currentLine)) !== null) {
+              const spanRef = parseGithubImageUrl(match[0])
+              if (spanRef != null && spanRef.filePath === ref.filePath) {
+                editor.replaceRange('', { line: lineNo, ch: match.index }, { line: lineNo, ch: match.index + match[0].length })
+                removed = true
+                break
+              }
+            }
+            if (!removed) {
+              // Remote deletion succeeded but span not found; leave body untouched
+              console.log('emo-uploader: could not locate link span on line', lineNo)
+            }
             new Notice(t('delete success'), 2000)
           }).catch((err) => {
             console.log(err)
