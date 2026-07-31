@@ -18,6 +18,8 @@ import { CatboxUploader } from './uploader/uploader-catbox'
 import { CheveretoUploader } from './uploader/uploader-chevereto'
 import { AlistUploader } from './uploader/uploader-alist'
 import { EasyImageUploader } from './uploader/uploader-easyimage'
+import { ConfirmModal } from './ui/confirm-modal'
+import { parseGithubImageUrl, extractReferencedFileNames } from './utils/github-url'
 
 export default class Emo extends Plugin {
   config!: Config
@@ -29,6 +31,7 @@ export default class Emo extends Plugin {
     this.setupPasteHandler()
     this.addSettingTab(new EmoUploaderSettingTab(this.app, this))
     WindowShared.register(this.app)
+    this.registerDeleteCommands()
   }
 
   // Plugin shutdown steps
@@ -114,5 +117,74 @@ export default class Emo extends Plugin {
         break
       }
     }
+  }
+
+  private registerDeleteCommands (): void {
+    // 命令1：删除光标处图片
+    this.addCommand({
+      id: 'emo-delete-image-at-cursor',
+      name: t('delete image cmd'),
+      editorCallback: (editor) => {
+        const line = editor.getLine(editor.getCursor().line)
+        const ref = parseGithubImageUrl(line)
+        const gp = this.config.github_parms
+        if (ref == null || ref.owner !== gp.required.owner || ref.repo !== gp.required.repo) {
+          new Notice(t('not github image'), 3000)
+          return
+        }
+        new ConfirmModal(this.app, t('confirm delete title'), [ref.filePath], () => {
+          const uploader = new GithubUploader(gp)
+          uploader.deleteRemote(ref.filePath).then(() => {
+            // 同步删除正文该行链接
+            const cur = editor.getCursor().line
+            editor.replaceRange('', { line: cur, ch: 0 }, { line: cur + 1, ch: 0 })
+            new Notice(t('delete success'), 2000)
+          }).catch((err) => {
+            console.log(err)
+            new Notice(t('delete failed'), 3000)
+          })
+        }).open()
+      }
+    })
+
+    // 命令2：清理当前文档未引用的图片
+    this.addCommand({
+      id: 'emo-clean-doc-images',
+      name: t('clean doc cmd'),
+      editorCallback: (editor, view) => {
+        const file = (view as any).file
+        const gp = this.config.github_parms
+        if (file == null) return
+        this.app.fileManager.processFrontMatter(file, (fm) => {
+          const mdId = fm['md-id']
+          if (typeof mdId !== 'string' || mdId.length === 0) {
+            new Notice(t('no md-id'), 3000)
+            return
+          }
+          const dirPath = gp.path + mdId + '/'
+          const uploader = new GithubUploader(gp)
+          uploader.listDir(gp.path + mdId).then((files) => {
+            const body = editor.getValue()
+            const referenced = extractReferencedFileNames(body, gp.required.owner, gp.required.repo, dirPath)
+            const toDelete = files.filter((f) => !referenced.has(f.name))
+            if (toDelete.length === 0) {
+              new Notice(t('nothing to clean'), 2000)
+              return
+            }
+            new ConfirmModal(this.app, t('confirm delete title'), toDelete.map((f) => f.name), () => {
+              Promise.allSettled(toDelete.map(async (f) => await uploader.deleteRemote(f.path)))
+                .then((results) => {
+                  const ok = results.filter((r) => r.status === 'fulfilled').length
+                  const fail = results.length - ok
+                  new Notice(`${t('clean result')}: ${ok} ✓ / ${fail} ✗`, 3000)
+                })
+            }).open()
+          }).catch((err) => {
+            console.log(err)
+            new Notice(t('delete failed'), 3000)
+          })
+        })
+      }
+    })
   }
 }
