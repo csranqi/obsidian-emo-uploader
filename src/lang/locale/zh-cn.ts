@@ -59,5 +59,17 @@ export default {
   'AList Settings': 'Alist配置',
   username: '用户名',
   password: '密码',
-  uploadPath: '上传路径'
+  uploadPath: '上传路径',
+  // delete feature
+  'delete image cmd': '删除光标处图片（GitHub）',
+  'clean doc cmd': '清理当前文档未引用的图片（GitHub）',
+  'confirm delete title': '确认删除',
+  'confirm': '确认',
+  'cancel': '取消',
+  'not github image': '光标处不是当前仓库的 GitHub 图片链接',
+  'no md-id': '该文档没有 md-id（尚未上传过图片）',
+  'nothing to clean': '没有可清理的未引用图片',
+  'delete success': '已从 GitHub 删除',
+  'delete failed': '删除失败，请检查 token 权限',
+  'clean result': '清理完成'
 }
