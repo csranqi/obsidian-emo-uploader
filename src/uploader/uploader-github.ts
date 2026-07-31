@@ -75,6 +75,42 @@ export class GithubUploader extends EmoUploader {
     })
   }
 
+  async deleteRemote (filePath: string): Promise<void> {
+    const { owner, repo, branch, token, message } = this.parms.required
+    const base = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`
+    const getReq: RequestUrlParam = {
+      url: `${base}?ref=${branch}`,
+      method: 'GET',
+      headers: { Authorization: `token ${token}` }
+    }
+    const getRes = await request(getReq)
+    const sha = JSON.parse(getRes).sha as string
+    const delReq: RequestUrlParam = {
+      url: base,
+      method: 'DELETE',
+      headers: { Authorization: `token ${token}` },
+      body: JSON.stringify({ message, sha, branch })
+    }
+    await request(delReq)
+  }
+
+  async listDir (dirPath: string): Promise<Array<{ name: string, path: string, sha: string }>> {
+    const { owner, repo, branch, token } = this.parms.required
+    const req: RequestUrlParam = {
+      url: `https://api.github.com/repos/${owner}/${repo}/contents/${dirPath}?ref=${branch}`,
+      method: 'GET',
+      headers: { Authorization: `token ${token}` }
+    }
+    try {
+      const res = await request(req)
+      const arr = JSON.parse(res)
+      if (!Array.isArray(arr)) return []
+      return arr.map((e: any) => ({ name: e.name, path: e.path, sha: e.sha }))
+    } catch (err) {
+      return [] // 目录不存在等
+    }
+  }
+
   private async getOrCreateMdId (): Promise<string> {
     const app = WindowShared.getApp()
     const activeFile = app.workspace.getActiveFile()
