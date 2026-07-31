@@ -18,6 +18,8 @@ import { CatboxUploader } from './uploader/uploader-catbox'
 import { CheveretoUploader } from './uploader/uploader-chevereto'
 import { AlistUploader } from './uploader/uploader-alist'
 import { EasyImageUploader } from './uploader/uploader-easyimage'
+import { ConfirmModal } from './ui/confirm-modal'
+import { parseGithubImageUrl, extractReferencedFileNames } from './utils/github-url'
 
 export default class Emo extends Plugin {
   config!: Config
@@ -29,6 +31,7 @@ export default class Emo extends Plugin {
     this.setupPasteHandler()
     this.addSettingTab(new EmoUploaderSettingTab(this.app, this))
     WindowShared.register(this.app)
+    this.registerDeleteCommands()
   }
 
   // Plugin shutdown steps
@@ -114,5 +117,89 @@ export default class Emo extends Plugin {
         break
       }
     }
+  }
+
+  private registerDeleteCommands (): void {
+    // 命令1：删除光标处图片
+    this.addCommand({
+      id: 'emo-delete-image-at-cursor',
+      name: t('delete image cmd'),
+      editorCallback: (editor) => {
+        const lineNo = editor.getCursor().line
+        const line = editor.getLine(lineNo)
+        const ref = parseGithubImageUrl(line)
+        const gp = this.config.github_parms
+        if (ref == null || ref.owner !== gp.required.owner || ref.repo !== gp.required.repo) {
+          new Notice(t('not github image'), 3000)
+          return
+        }
+        new ConfirmModal(this.app, t('confirm delete title'), [ref.filePath], () => {
+          const uploader = new GithubUploader(gp)
+          uploader.deleteRemote(ref.filePath).then(() => {
+            // Remove only the matched image/link span on the captured line
+            const linkPattern = /!?\[[^\]]*\]\([^)]*\)/g
+            const currentLine = editor.getLine(lineNo)
+            let match: RegExpExecArray | null
+            let removed = false
+            while ((match = linkPattern.exec(currentLine)) !== null) {
+              const spanRef = parseGithubImageUrl(match[0])
+              if (spanRef != null && spanRef.filePath === ref.filePath) {
+                editor.replaceRange('', { line: lineNo, ch: match.index }, { line: lineNo, ch: match.index + match[0].length })
+                removed = true
+                break
+              }
+            }
+            if (!removed) {
+              // Remote deletion succeeded but span not found; leave body untouched
+              console.log('emo-uploader: could not locate link span on line', lineNo)
+            }
+            new Notice(t('delete success'), 2000)
+          }).catch((err) => {
+            console.log(err)
+            new Notice(t('delete failed'), 3000)
+          })
+        }).open()
+      }
+    })
+
+    // 命令2：清理当前文档未引用的图片
+    this.addCommand({
+      id: 'emo-clean-doc-images',
+      name: t('clean doc cmd'),
+      editorCallback: (editor, view) => {
+        const file = (view as any).file
+        const gp = this.config.github_parms
+        if (file == null) return
+        this.app.fileManager.processFrontMatter(file, (fm) => {
+          const mdId = fm['md-id']
+          if (typeof mdId !== 'string' || mdId.length === 0) {
+            new Notice(t('no md-id'), 3000)
+            return
+          }
+          const dirPath = gp.path + mdId + '/'
+          const uploader = new GithubUploader(gp)
+          uploader.listDir(gp.path + mdId).then((files) => {
+            const body = editor.getValue()
+            const referenced = extractReferencedFileNames(body, gp.required.owner, gp.required.repo, dirPath)
+            const toDelete = files.filter((f) => !referenced.has(f.name))
+            if (toDelete.length === 0) {
+              new Notice(t('nothing to clean'), 2000)
+              return
+            }
+            new ConfirmModal(this.app, t('confirm delete title'), toDelete.map((f) => f.name), () => {
+              Promise.allSettled(toDelete.map(async (f) => await uploader.deleteRemote(f.path)))
+                .then((results) => {
+                  const ok = results.filter((r) => r.status === 'fulfilled').length
+                  const fail = results.length - ok
+                  new Notice(`${t('clean result')}: ${ok} ✓ / ${fail} ✗`, 3000)
+                })
+            }).open()
+          }).catch((err) => {
+            console.log(err)
+            new Notice(t('delete failed'), 3000)
+          })
+        })
+      }
+    })
   }
 }

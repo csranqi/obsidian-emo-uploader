@@ -59,5 +59,17 @@ export default {
   'AList Settings': 'Alist Settings',
   username: 'username',
   password: 'password',
-  uploadPath: 'uploadPath'
+  uploadPath: 'uploadPath',
+  // delete feature
+  'delete image cmd': 'Delete image at cursor (GitHub)',
+  'clean doc cmd': 'Clean unused images of current doc (GitHub)',
+  'confirm delete title': 'Confirm delete',
+  'confirm': 'Confirm',
+  'cancel': 'Cancel',
+  'not github image': 'Cursor is not a GitHub image link of the current repo',
+  'no md-id': 'This document has no md-id (never uploaded)',
+  'nothing to clean': 'No unused images to clean',
+  'delete success': 'Deleted from GitHub',
+  'delete failed': 'Delete failed, check token permission',
+  'clean result': 'Clean done'
 }
