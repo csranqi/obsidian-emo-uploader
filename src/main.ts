@@ -124,43 +124,21 @@ export default class Emo extends Plugin {
     this.addCommand({
       id: 'emo-delete-image-at-cursor',
       name: t('delete image cmd'),
-      editorCallback: (editor) => {
-        const lineNo = editor.getCursor().line
-        const line = editor.getLine(lineNo)
-        const ref = parseGithubImageUrl(line)
-        const gp = this.config.github_parms
-        if (ref == null || ref.owner !== gp.required.owner || ref.repo !== gp.required.repo) {
-          new Notice(t('not github image'), 3000)
-          return
-        }
-        new ConfirmModal(this.app, t('confirm delete title'), [ref.filePath], () => {
-          const uploader = new GithubUploader(gp)
-          uploader.deleteRemote(ref.filePath).then(() => {
-            // Remove only the matched image/link span on the captured line
-            const linkPattern = /!?\[[^\]]*\]\([^)]*\)/g
-            const currentLine = editor.getLine(lineNo)
-            let match: RegExpExecArray | null
-            let removed = false
-            while ((match = linkPattern.exec(currentLine)) !== null) {
-              const spanRef = parseGithubImageUrl(match[0])
-              if (spanRef != null && spanRef.filePath === ref.filePath) {
-                editor.replaceRange('', { line: lineNo, ch: match.index }, { line: lineNo, ch: match.index + match[0].length })
-                removed = true
-                break
-              }
-            }
-            if (!removed) {
-              // Remote deletion succeeded but span not found; leave body untouched
-              console.log('emo-uploader: could not locate link span on line', lineNo)
-            }
-            new Notice(t('delete success'), 2000)
-          }).catch((err) => {
-            console.log(err)
-            new Notice(t('delete failed'), 3000)
-          })
-        }).open()
-      }
+      editorCallback: (editor) => { this.deleteImageAtCursor(editor, true) }
     })
+
+    // 右键菜单：删除光标处图片（仅当当前行是本仓库图片链接时显示）
+    this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor) => {
+      const line = editor.getLine(editor.getCursor().line)
+      const ref = parseGithubImageUrl(line)
+      const gp = this.config.github_parms
+      if (ref == null || ref.owner !== gp.required.owner || ref.repo !== gp.required.repo) return
+      menu.addItem((item) => {
+        item.setTitle(t('delete image cmd'))
+          .setIcon('trash')
+          .onClick(() => { this.deleteImageAtCursor(editor, false) })
+      })
+    }))
 
     // 命令2：清理当前文档未引用的图片
     this.addCommand({
@@ -187,12 +165,23 @@ export default class Emo extends Plugin {
               return
             }
             new ConfirmModal(this.app, t('confirm delete title'), toDelete.map((f) => f.name), () => {
-              Promise.allSettled(toDelete.map(async (f) => await uploader.deleteRemote(f.path)))
-                .then((results) => {
-                  const ok = results.filter((r) => r.status === 'fulfilled').length
-                  const fail = results.length - ok
+              let ok = 0
+              let fail = 0
+              const settle = (): void => {
+                if (ok + fail === toDelete.length) {
                   new Notice(`${t('clean result')}: ${ok} ✓ / ${fail} ✗`, 3000)
+                }
+              }
+              for (const f of toDelete) {
+                uploader.deleteRemote(f.path).then(() => {
+                  ok++
+                  settle()
+                }).catch((err) => {
+                  console.log(err)
+                  fail++
+                  settle()
                 })
+              }
             }).open()
           }).catch((err) => {
             console.log(err)
@@ -201,5 +190,42 @@ export default class Emo extends Plugin {
         })
       }
     })
+  }
+
+  private deleteImageAtCursor (editor: Editor, notifyWhenNotImage: boolean): void {
+    const lineNo = editor.getCursor().line
+    const line = editor.getLine(lineNo)
+    const ref = parseGithubImageUrl(line)
+    const gp = this.config.github_parms
+    if (ref == null || ref.owner !== gp.required.owner || ref.repo !== gp.required.repo) {
+      if (notifyWhenNotImage) new Notice(t('not github image'), 3000)
+      return
+    }
+    new ConfirmModal(this.app, t('confirm delete title'), [ref.filePath], () => {
+      const uploader = new GithubUploader(gp)
+      uploader.deleteRemote(ref.filePath).then(() => {
+        // Remove only the matched image/link span on the captured line
+        const linkPattern = /!?\[[^\]]*\]\([^)]*\)/g
+        const currentLine = editor.getLine(lineNo)
+        let match: RegExpExecArray | null
+        let removed = false
+        while ((match = linkPattern.exec(currentLine)) !== null) {
+          const spanRef = parseGithubImageUrl(match[0])
+          if (spanRef != null && spanRef.filePath === ref.filePath) {
+            editor.replaceRange('', { line: lineNo, ch: match.index }, { line: lineNo, ch: match.index + match[0].length })
+            removed = true
+            break
+          }
+        }
+        if (!removed) {
+          // Remote deletion succeeded but span not found; leave body untouched
+          console.log('emo-uploader: could not locate link span on line', lineNo)
+        }
+        new Notice(t('delete success'), 2000)
+      }).catch((err) => {
+        console.log(err)
+        new Notice(t('delete failed'), 3000)
+      })
+    }).open()
   }
 }
