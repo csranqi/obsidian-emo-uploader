@@ -2,3 +2,32 @@
 	text-align: center;
 	margin-bottom: 10px;
 }
+
+.emo-img-wrap {
+	position: relative;
+	display: inline-block;
+}
+
+.emo-img-delete-btn {
+	display: none;
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	z-index: 10;
+	padding: 3px 6px;
+	font-size: 12px;
+	line-height: 1;
+	cursor: pointer;
+	border-radius: 4px;
+	border: none;
+	background: rgba(0, 0, 0, 0.55);
+	color: #fff;
+}
+
+.emo-img-wrap:hover .emo-img-delete-btn {
+	display: block;
+}
+
+.emo-img-delete-btn:hover {
+	background: rgba(220, 50, 50, 0.85);
+}
