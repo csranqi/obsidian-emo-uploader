@@ -1,7 +1,8 @@
 import type { Editor } from 'obsidian'
 import {
   Plugin,
-  Notice
+  Notice,
+  MarkdownView
 } from 'obsidian'
 import { t } from './lang/helpers'
 import { EmoUploaderSettingTab } from './settings-tab'
@@ -194,49 +195,78 @@ export default class Emo extends Plugin {
   }
 
   private registerImageHoverDelete (): void {
-    this.registerMarkdownPostProcessor((el, ctx) => {
+    const attachBtn = (img: HTMLImageElement): void => {
+      if (img.dataset.emoDelete === '1') return
+      const src = img.getAttribute('src') ?? ''
+      const ref = parseGithubImageUrl(src)
       const gp = this.config.github_parms
-      el.querySelectorAll('img').forEach((img: HTMLImageElement) => {
-        const src = img.getAttribute('src') ?? ''
-        const ref = parseGithubImageUrl(src)
-        if (ref == null || ref.owner !== gp.required.owner || ref.repo !== gp.required.repo) return
+      if (ref == null || ref.owner !== gp.required.owner || ref.repo !== gp.required.repo) return
 
-        // wrap img so the button can be positioned relative to it
-        const wrap = document.createElement('span')
-        wrap.className = 'emo-img-wrap'
-        img.parentNode?.insertBefore(wrap, img)
-        wrap.appendChild(img)
+      img.dataset.emoDelete = '1'
+      const wrap = document.createElement('span')
+      wrap.className = 'emo-img-wrap'
+      img.parentNode?.insertBefore(wrap, img)
+      wrap.appendChild(img)
 
-        const btn = document.createElement('button')
-        btn.className = 'emo-img-delete-btn'
-        btn.textContent = t('delete image cmd')
-        wrap.appendChild(btn)
+      const btn = document.createElement('div')
+      btn.className = 'emo-img-delete-btn'
+      btn.setAttribute('aria-label', t('delete image cmd'))
+      btn.setAttribute('role', 'button')
+      btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>`
+      wrap.appendChild(btn)
 
-        btn.addEventListener('click', (e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          const file = this.app.vault.getAbstractFileByPath(ctx.sourcePath) as any
-          if (file == null) return
-          new ConfirmModal(this.app, t('confirm delete title'), [ref.filePath], () => {
-            const uploader = new GithubUploader(gp)
-            uploader.deleteRemote(ref.filePath).then(() => {
-              // remove the link from the source
-              this.app.vault.process(file, (src) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        // find the active editor leaf to get sourcePath
+        const mdView = this.app.workspace.getActiveViewOfType(MarkdownView)
+        const sourcePath: string = (mdView as any)?.file?.path ?? ''
+        const file = sourcePath ? this.app.vault.getAbstractFileByPath(sourcePath) as any : null
+        new ConfirmModal(this.app, t('confirm delete title'), [ref.filePath], () => {
+          const uploader = new GithubUploader(gp)
+          uploader.deleteRemote(ref.filePath).then(() => {
+            if (file != null) {
+              this.app.vault.process(file, (content) => {
                 const linkPattern = /!?\[[^\]]*\]\([^)]*\)/g
-                return src.replace(linkPattern, (match) => {
+                return content.replace(linkPattern, (match) => {
                   const matchRef = parseGithubImageUrl(match)
                   return matchRef != null && matchRef.filePath === ref.filePath ? '' : match
                 })
               })
-              new Notice(t('delete success'), 2000)
-            }).catch((err) => {
-              console.log(err)
-              new Notice(t('delete failed'), 3000)
-            })
-          }).open()
-        })
+            }
+            new Notice(t('delete success'), 2000)
+          }).catch((err) => {
+            console.log(err)
+            new Notice(t('delete failed'), 3000)
+          })
+        }).open()
       })
+    }
+
+    const scanImgs = (root: Element): void => {
+      root.querySelectorAll('img').forEach((img) => attachBtn(img as HTMLImageElement))
+    }
+
+    // scan existing content when a leaf becomes active
+    this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
+      const view = this.app.workspace.getActiveViewOfType(MarkdownView)
+      const container = (view as any)?.contentEl as Element | undefined
+      if (container != null) scanImgs(container)
+    }))
+
+    // watch DOM for newly inserted images
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        m.addedNodes.forEach((node) => {
+          if (node instanceof Element) {
+            if (node.tagName === 'IMG') attachBtn(node as HTMLImageElement)
+            else scanImgs(node)
+          }
+        })
+      }
     })
+    observer.observe(document.body, { childList: true, subtree: true })
+    this.register(() => observer.disconnect())
   }
 
   private deleteImageAtCursor (editor: Editor, notifyWhenNotImage: boolean): void {
