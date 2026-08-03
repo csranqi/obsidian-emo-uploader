@@ -32,6 +32,7 @@ export default class Emo extends Plugin {
     this.addSettingTab(new EmoUploaderSettingTab(this.app, this))
     WindowShared.register(this.app)
     this.registerDeleteCommands()
+    this.registerImageHoverDelete()
   }
 
   // Plugin shutdown steps
@@ -189,6 +190,52 @@ export default class Emo extends Plugin {
           })
         })
       }
+    })
+  }
+
+  private registerImageHoverDelete (): void {
+    this.registerMarkdownPostProcessor((el, ctx) => {
+      const gp = this.config.github_parms
+      el.querySelectorAll('img').forEach((img: HTMLImageElement) => {
+        const src = img.getAttribute('src') ?? ''
+        const ref = parseGithubImageUrl(src)
+        if (ref == null || ref.owner !== gp.required.owner || ref.repo !== gp.required.repo) return
+
+        // wrap img so the button can be positioned relative to it
+        const wrap = document.createElement('span')
+        wrap.className = 'emo-img-wrap'
+        img.parentNode?.insertBefore(wrap, img)
+        wrap.appendChild(img)
+
+        const btn = document.createElement('button')
+        btn.className = 'emo-img-delete-btn'
+        btn.textContent = t('delete image cmd')
+        wrap.appendChild(btn)
+
+        btn.addEventListener('click', (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          const file = this.app.vault.getAbstractFileByPath(ctx.sourcePath) as any
+          if (file == null) return
+          new ConfirmModal(this.app, t('confirm delete title'), [ref.filePath], () => {
+            const uploader = new GithubUploader(gp)
+            uploader.deleteRemote(ref.filePath).then(() => {
+              // remove the link from the source
+              this.app.vault.process(file, (src) => {
+                const linkPattern = /!?\[[^\]]*\]\([^)]*\)/g
+                return src.replace(linkPattern, (match) => {
+                  const matchRef = parseGithubImageUrl(match)
+                  return matchRef != null && matchRef.filePath === ref.filePath ? '' : match
+                })
+              })
+              new Notice(t('delete success'), 2000)
+            }).catch((err) => {
+              console.log(err)
+              new Notice(t('delete failed'), 3000)
+            })
+          }).open()
+        })
+      })
     })
   }
 
